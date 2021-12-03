@@ -1,7 +1,9 @@
 from selenium import webdriver # Opens own webdriver to navigate to the schedule
-import chromedriver_binary  # Adds chromedriver binary to path
+from webdriver_manager.chrome import ChromeDriverManager # This will install the right chromedriver for each system (I think)
+# import chromedriver_binary  # Adds chromedriver binary to path
 #! For selenium to work you need to install chrome-beta and replace chrome with it (i.e. change the path of chrome beta to where original chrome was). 
 # Other selenium things
+from selenium.webdriver.chrome.service import Service # This is used to not use the depricated argument "executable_path"
 from selenium.webdriver.chrome.options import Options # I don't even know what this does
 from selenium.webdriver.common.by import By # By and EC is needed to not use depricated locating methods
 from selenium.webdriver.support import expected_conditions as EC # ^
@@ -12,6 +14,7 @@ import json # Here only used to output the complete schedule indended
 import datetime # date and time would be really usefull to know when working with schedules
 from dotenv import load_dotenv # This is used to safely take the username and password from a .env file
 from os import getenv # to read the .env file
+from sys import exit as Exit
 
 #*========================== DATA EXTRACTION ========================
 def extract_cell_data(cell, i): # Gets the data from the cell
@@ -43,15 +46,28 @@ def return_cells(row, i): # returns only cells which are significant to the sche
 
 def getRawData(): # uses selenium to download all the data we need
     chrome_options = Options()
-    
+    chrome_options.add_argument("--headless") # this will run the chromedriver invisible
+
     #* Some variables stored in a .env file
+
     load_dotenv()
     username = getenv("username")
     password = getenv("password")
+    if username == None or password == None:
+        print("Write your password and email address in the environment file.")
+        with open(".env", "w") as f:
+            f.write("username=\npassword=")
+        input("exiting...")
+
+        Exit()
+    else:
+        print("Found username and password in the environment file.")
     url = "https://sms.schoolsoft.se/nti/sso"
 
     #* open the Driver with the correct page
-    driver = webdriver.Chrome(options=chrome_options)
+    # driver = webdriver.Chrome(options=chrome_options)
+    print("Starting Selenium...")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options) # this finds the right driver for your system
     driver.get(url)
 
     #* Click through and fill in the form
@@ -60,18 +76,22 @@ def getRawData(): # uses selenium to download all the data we need
     password_input = '//*[@id="password"]'
     login_button = '/html/body/article/form/div[3]/button'
 
+    print("Logging in...")
     #inputs the username and password
     driver.find_element(By.XPATH, username_input).send_keys(username)
     driver.find_element(By.XPATH, password_input).send_keys(password)
     #presses the login button
     WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, login_button))).click()
 
+    print("Logged in!")
+    print("Searching the schedule...")
     #*: Go to the scedule page and store the schedule in a variable
     schedule_button = '/html/body/div[1]/div/div[2]/div/div/div/a[6]/div'
     WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.XPATH, schedule_button))).click()
     # driver.find_element(By.XPATH, schedule_button).click()
-
+    print("Schedule found!")
     soup = BeautifulSoup(driver.page_source, "html.parser") # BS4 object
+    print("Exiting selenium.")
     driver.quit()
     raw_rows = soup.find_all("tr",{"class": "schedulerow"}) # The raw data of the schedule (it is the only table on the page)
 
@@ -82,6 +102,7 @@ def getRawData(): # uses selenium to download all the data we need
 
     with open("rawdata.json", "w") as f:
         f.write(json.dumps(schedule_rows))
+    print("Raw data downloaded.")
 
     return schedule_rows
 
@@ -185,7 +206,7 @@ def convertRawData(schedule_rows = False): # converts the data to a dictionary
                     schedule = r[0] # add this cell to the scedule
                     final_schedule = r[1] 
                     rowspan_sum[min_day] += cell["rowspan"] # adding that rowspan value to the current min_day
-
+    print("Saved the schedule.")
     return final_schedule
 
 #*=========================== DATA MANIPULATION ========================
@@ -269,3 +290,4 @@ def main():
     pass
 
 main()
+input("Press Enter to exit")
